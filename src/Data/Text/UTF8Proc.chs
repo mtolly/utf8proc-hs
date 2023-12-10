@@ -29,8 +29,39 @@ utf8proc_VERSION_PATCH = {#const UTF8PROC_VERSION_PATCH #}
 {#typedef utf8proc_ssize_t  CPtrdiff #}
 {#typedef utf8proc_bool     Bool     #}
 
-{#enum utf8proc_option_t as Option {} #}
-deriving instance Show Option
+newtype Option = Option Word32
+  deriving (Storable, Show)
+{#typedef utf8proc_option_t Option #}
+
+instance Semigroup Option where
+  Option x <> Option y = Option (x .|. y)
+instance Monoid Option where
+  mempty = Option 0
+
+optionOff :: Option -> Option -> Option
+optionOff (Option x) (Option y) = Option (x .&. complement y)
+
+utf8proc_NULLTERM, utf8proc_STABLE, utf8proc_COMPAT, utf8proc_COMPOSE
+  , utf8proc_DECOMPOSE, utf8proc_IGNORE, utf8proc_REJECTNA, utf8proc_NLF2LS
+  , utf8proc_NLF2PS, utf8proc_NLF2LF, utf8proc_STRIPCC, utf8proc_CASEFOLD
+  , utf8proc_CHARBOUND, utf8proc_LUMP, utf8proc_STRIPMARK, utf8proc_STRIPNA
+  :: Option
+utf8proc_NULLTERM  = Option (1 `shiftL` 0)
+utf8proc_STABLE    = Option (1 `shiftL` 1)
+utf8proc_COMPAT    = Option (1 `shiftL` 2)
+utf8proc_COMPOSE   = Option (1 `shiftL` 3)
+utf8proc_DECOMPOSE = Option (1 `shiftL` 4)
+utf8proc_IGNORE    = Option (1 `shiftL` 5)
+utf8proc_REJECTNA  = Option (1 `shiftL` 6)
+utf8proc_NLF2LS    = Option (1 `shiftL` 7)
+utf8proc_NLF2PS    = Option (1 `shiftL` 8)
+utf8proc_NLF2LF    = utf8proc_NLF2LS <> utf8proc_NLF2PS
+utf8proc_STRIPCC   = Option (1 `shiftL` 9)
+utf8proc_CASEFOLD  = Option (1 `shiftL` 10)
+utf8proc_CHARBOUND = Option (1 `shiftL` 11)
+utf8proc_LUMP      = Option (1 `shiftL` 12)
+utf8proc_STRIPMARK = Option (1 `shiftL` 13)
+utf8proc_STRIPNA   = Option (1 `shiftL` 14)
 
 data Error
   = UTF8PROC_ERROR_NOMEM
@@ -39,6 +70,7 @@ data Error
   | UTF8PROC_ERROR_NOTASSIGNED
   | UTF8PROC_ERROR_INVALIDOPTS
   | ErrorUnknown CPtrdiff
+  deriving (Show)
 
 errorCode :: Error -> CPtrdiff
 errorCode err = case err of
@@ -48,6 +80,15 @@ errorCode err = case err of
   UTF8PROC_ERROR_NOTASSIGNED -> {#const UTF8PROC_ERROR_NOTASSIGNED #}
   UTF8PROC_ERROR_INVALIDOPTS -> {#const UTF8PROC_ERROR_INVALIDOPTS #}
   ErrorUnknown x             -> x
+
+fromErrorCode :: CPtrdiff -> Error
+fromErrorCode c = case c of
+  {#const UTF8PROC_ERROR_NOMEM       #} -> UTF8PROC_ERROR_NOMEM
+  {#const UTF8PROC_ERROR_OVERFLOW    #} -> UTF8PROC_ERROR_OVERFLOW
+  {#const UTF8PROC_ERROR_INVALIDUTF8 #} -> UTF8PROC_ERROR_INVALIDUTF8
+  {#const UTF8PROC_ERROR_NOTASSIGNED #} -> UTF8PROC_ERROR_NOTASSIGNED
+  {#const UTF8PROC_ERROR_INVALIDOPTS #} -> UTF8PROC_ERROR_INVALIDOPTS
+  _                                     -> ErrorUnknown c
 
 {#pointer *utf8proc_property_t as CProperty newtype #}
 deriving instance Storable CProperty
@@ -202,26 +243,40 @@ toChar = toEnum . fromIntegral
 {#fun pure utf8proc_category { fromChar `Char' } -> `Category' #}
 {#fun pure utf8proc_category_string { fromChar `Char' } -> `B.ByteString' packCString* #}
 
--- UTF8PROC_DLLEXPORT utf8proc_ssize_t utf8proc_map(
---   const utf8proc_uint8_t *str, utf8proc_ssize_t strlen, utf8proc_uint8_t **dstptr, utf8proc_option_t options
--- );
+{#fun utf8proc_map as utf8proc_map' { id `Ptr Word8', `CPtrdiff', id `Ptr (Ptr Word8)', `Option' } -> `CPtrdiff' #}
+
+{-# NOINLINE utf8proc_map #-}
+utf8proc_map :: Option -> T.Text -> Either Error T.Text
+utf8proc_map opt t = unsafePerformIO $ F.useAsPtr t $ \p len -> do
+  alloca $ \dst -> do
+    -- p is probably NOT null-terminated so make sure we don't say it is
+    res <- utf8proc_map' p (fromIntegral len) dst $ opt `optionOff` utf8proc_NULLTERM
+    if res < 0
+      then return $ Left $ fromErrorCode res
+      else do
+        p' <- peek dst
+        if p' == nullPtr
+          then return $ Left $ ErrorUnknown 0 -- shouldn't happen hopefully
+          else do
+            t' <- F.fromPtr0 p'
+            free p'
+            return $ Right t'
 
 -- UTF8PROC_DLLEXPORT utf8proc_ssize_t utf8proc_map_custom(
 --   const utf8proc_uint8_t *str, utf8proc_ssize_t strlen, utf8proc_uint8_t **dstptr, utf8proc_option_t options,
 --   utf8proc_custom_func custom_func, void *custom_data
 -- );
 
-{#fun pure utf8proc_NFD { utf8Ptr* `T.Text' } -> `T.Text' packAndFree* #}
-{#fun pure utf8proc_NFC { utf8Ptr* `T.Text' } -> `T.Text' packAndFree* #}
-{#fun pure utf8proc_NFKD { utf8Ptr* `T.Text' } -> `T.Text' packAndFree* #}
-{#fun pure utf8proc_NFKC { utf8Ptr* `T.Text' } -> `T.Text' packAndFree* #}
-{#fun pure utf8proc_NFKC_Casefold { utf8Ptr* `T.Text' } -> `T.Text' packAndFree* #}
-
-utf8Ptr :: T.Text -> (Ptr Word8 -> IO a) -> IO a
-utf8Ptr t f = F.useAsPtr t $ \p _ -> f p
-
-packAndFree :: Ptr Word8 -> IO T.Text
-packAndFree p = do
-  t <- F.fromPtr0 p
-  free p
-  return t
+utf8proc_NFD, utf8proc_NFC, utf8proc_NFKD, utf8proc_NFKC, utf8proc_NFKC_Casefold
+  :: T.Text -> Either Error T.Text
+utf8proc_NFD = utf8proc_map $ utf8proc_STABLE <> utf8proc_DECOMPOSE
+utf8proc_NFC = utf8proc_map $ utf8proc_STABLE <> utf8proc_COMPOSE
+utf8proc_NFKD = utf8proc_map $ utf8proc_STABLE <> utf8proc_DECOMPOSE <> utf8proc_COMPAT
+utf8proc_NFKC = utf8proc_map $ utf8proc_STABLE <> utf8proc_COMPOSE <> utf8proc_COMPAT
+utf8proc_NFKC_Casefold = utf8proc_map $ mconcat
+  [ utf8proc_STABLE
+  , utf8proc_COMPOSE
+  , utf8proc_COMPAT
+  , utf8proc_CASEFOLD
+  , utf8proc_IGNORE
+  ]
