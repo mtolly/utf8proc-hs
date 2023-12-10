@@ -1,0 +1,26 @@
+cabal-version:  1.12
+name:           utf8proc
+version:        0.1.0.0
+build-type:     Custom
+
+custom-setup
+  setup-depends:
+      Cabal
+    , base
+    , process
+    , directory
+
+library
+  exposed-modules:
+    Data.Text.UTF8Proc
+  hs-source-dirs: src
+  ghc-options: -Wall
+  build-tools: c2hs
+  build-depends: base, bytestring, text
+  default-language: Haskell2010
+  extra-libraries: utf8proc
+
+executable utf8proc-test
+  main-is: Main.hs
+  build-depends: base, utf8proc, bytestring, text
+  default-language: Haskell2010
