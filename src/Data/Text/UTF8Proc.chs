@@ -247,10 +247,10 @@ toChar = toEnum . fromIntegral
 
 {-# NOINLINE utf8proc_map #-}
 utf8proc_map :: Option -> T.Text -> Either Error T.Text
-utf8proc_map opt t = unsafePerformIO $ F.useAsPtr t $ \p len -> do
+utf8proc_map opt t = unsafePerformIO $ F.withCStringLen t $ \(p, len) -> do
   alloca $ \dst -> do
     -- p is probably NOT null-terminated so make sure we don't say it is
-    res <- utf8proc_map' p (fromIntegral len) dst $ opt `optionOff` utf8proc_NULLTERM
+    res <- utf8proc_map' (castPtr p) (fromIntegral len) dst $ opt `optionOff` utf8proc_NULLTERM
     if res < 0
       then return $ Left $ fromErrorCode res
       else do
@@ -258,7 +258,7 @@ utf8proc_map opt t = unsafePerformIO $ F.useAsPtr t $ \p len -> do
         if p' == nullPtr
           then return $ Left $ ErrorUnknown 0 -- shouldn't happen hopefully
           else do
-            t' <- F.fromPtr0 p'
+            t' <- F.peekCStringLen (castPtr p', fromIntegral res)
             free p'
             return $ Right t'
 
