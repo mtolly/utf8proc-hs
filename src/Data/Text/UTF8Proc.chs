@@ -150,7 +150,8 @@ getProperty cp = unsafePerformIO $ do
   let getMaybeEnum 0 = Nothing
       getMaybeEnum n = Just $ toEnum $ fromIntegral n
   a <- toEnum . fromIntegral <$> {#get utf8proc_property_t->category             #} cp
-  b <- coerce                <$> {#get utf8proc_property_t->combining_class      #} cp
+  -- TODO below should be coerce, but on some systems (Ubuntu 16.04) the int16_t (utf8proc_propval_t) is actually an Int32?
+  b <- fromIntegral          <$> {#get utf8proc_property_t->combining_class      #} cp
   c <- getMaybeEnum          <$> {#get utf8proc_property_t->bidi_class           #} cp
   d <- getMaybeEnum          <$> {#get utf8proc_property_t->decomp_type          #} cp
   e <- coerce                <$> {#get utf8proc_property_t->decomp_seqindex      #} cp
