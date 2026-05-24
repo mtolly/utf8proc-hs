@@ -3,6 +3,12 @@ name:           utf8proc
 version:        0.1.0.0
 build-type:     Custom
 
+extra-source-files:
+    cbits/utf8proc-2.9.0/Makefile
+    cbits/utf8proc-2.9.0/utf8proc.h
+    cbits/utf8proc-2.9.0/utf8proc.c
+    cbits/utf8proc-2.9.0/utf8proc_data.c
+
 custom-setup
   setup-depends:
       Cabal
