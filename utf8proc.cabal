@@ -22,6 +22,8 @@ library
   hs-source-dirs: src
   ghc-options: -Wall
   build-tools: c2hs
+  -- GCC 15+ defaults to C23, then `bool` keyword breaks c2hs
+  cpp-options: -std=gnu17
   build-depends: base, bytestring, text
   default-language: Haskell2010
   extra-libraries: utf8proc
